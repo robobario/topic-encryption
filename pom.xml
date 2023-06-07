@@ -89,6 +89,7 @@
         <module>kms-test</module>
         <module>kms-vault</module>
         <module>kms-keyprotect</module>
+        <module>kroxylicious-filter</module>
     </modules>
 
     <dependencyManagement>
