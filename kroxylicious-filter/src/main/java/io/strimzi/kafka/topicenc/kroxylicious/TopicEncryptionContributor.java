@@ -6,9 +6,11 @@ import io.kroxylicious.proxy.service.BaseContributor;
 
 public class TopicEncryptionContributor extends BaseContributor<KrpcFilter> implements FilterContributor {
 
-    public static final String TOPIC_ENCRYPTION_SHORTNAME = "TopicEncryption";
+    public static final String DECRYPT_FETCH = "TopicEncryption::DecryptFetch";
+    public static final String ENCRYPT_PRODUCE = "TopicEncryption::EncryptProduce";
     public static final BaseContributorBuilder<KrpcFilter> FILTERS = BaseContributor.<KrpcFilter>builder()
-            .add(TOPIC_ENCRYPTION_SHORTNAME, TopicEncryptionFilter::new);
+            .add(DECRYPT_FETCH, FetchDecryptFilter::new)
+            .add(ENCRYPT_PRODUCE, ProduceEncryptFilter::new);
 
     public TopicEncryptionContributor() {
         super(FILTERS);

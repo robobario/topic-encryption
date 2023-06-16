@@ -1,9 +1,9 @@
 package io.strimzi.kafka.topicenc.kroxylicious;
 
-import io.kroxylicious.proxy.KroxyliciousConfigBuilder;
 import io.kroxylicious.test.Request;
 import io.kroxylicious.test.Response;
 import io.kroxylicious.test.client.KafkaClient;
+import io.kroxylicious.test.tester.KroxyliciousTester;
 import io.kroxylicious.testing.kafka.api.KafkaCluster;
 import io.kroxylicious.testing.kafka.junit5ext.KafkaClusterExtension;
 import org.apache.kafka.clients.admin.Admin;
@@ -26,6 +26,8 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -41,23 +43,39 @@ import java.util.concurrent.TimeUnit;
 import static io.kroxylicious.test.tester.KroxyliciousConfigUtils.proxy;
 import static io.kroxylicious.test.tester.KroxyliciousConfigUtils.withDefaultFilters;
 import static io.kroxylicious.test.tester.KroxyliciousTesters.kroxyliciousTester;
-import static io.strimzi.kafka.topicenc.kroxylicious.TopicEncryptionContributor.TOPIC_ENCRYPTION_SHORTNAME;
+import static io.strimzi.kafka.topicenc.kroxylicious.TopicEncryptionContributor.DECRYPT_FETCH;
+import static io.strimzi.kafka.topicenc.kroxylicious.TopicEncryptionContributor.ENCRYPT_PRODUCE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.fail;
 
 @ExtendWith(KafkaClusterExtension.class)
-class TopicEncryptionFilterTest {
+class TopicEncryptionTest {
 
     private static final short PRE_TOPIC_ID_SCHEMA = (short) 12;
     private static final short POST_TOPIC_ID_SCHEMA = (short) 13;
     public static final String TOPIC_NAME = "example";
     public static final String UNENCRYPTED_VALUE = "unencryptedValue";
 
+    KafkaCluster cluster;
+    private KroxyliciousTester tester;
+
+    @BeforeEach
+    public void setup() {
+        tester = kroxyliciousTester(withDefaultFilters(proxy(cluster))
+                .addNewFilter().withType(DECRYPT_FETCH).endFilter()
+                .addNewFilter().withType(ENCRYPT_PRODUCE).endFilter()
+        );
+    }
+
+    @AfterEach
+    public void teardown() {
+        tester.close();
+    }
+
     @Test
-    public void testEncryptionRoundtrip(KafkaCluster cluster, Admin admin) {
-        try (var tester = kroxyliciousTester(topicEncryptionConfig(cluster));
-             Producer<String, String> producer = tester.producer();
+    public void testEncryptionRoundtrip(Admin admin) {
+        try (Producer<String, String> producer = tester.producer();
              Consumer<String, byte[]> kafkaClusterConsumer = getConsumer(cluster);
              Consumer<String, byte[]> proxyConsumer = tester.consumer(Serdes.String(), Serdes.ByteArray(), Map.of(ConsumerConfig.GROUP_ID_CONFIG, "another-group-id", ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"))
         ) {
@@ -73,16 +91,13 @@ class TopicEncryptionFilterTest {
     }
 
     @Test
-    public void testEncryptionRoundtripWithPreTopicIdFetchRequest(KafkaCluster cluster, Admin admin) {
-        try (var tester = kroxyliciousTester(topicEncryptionConfig(cluster));
-             Producer<String, String> producer = tester.producer();
+    public void testEncryptionRoundtripWithPreTopicIdFetchRequest(Admin admin) {
+        try (Producer<String, String> producer = tester.producer();
              KafkaClient client = tester.singleRequestClient()
         ) {
             admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1))).all().get(10, TimeUnit.SECONDS);
             producer.send(new ProducerRecord<>(TOPIC_NAME, UNENCRYPTED_VALUE)).get(10, TimeUnit.SECONDS);
-            FetchRequestData message = fetchRequestWith(fetchTopic -> {
-                fetchTopic.setTopic(TOPIC_NAME);
-            });
+            FetchRequestData message = fetchRequestWith(fetchTopic -> fetchTopic.setTopic(TOPIC_NAME));
             Response responseCompletableFuture = client.getSync(new Request(ApiKeys.FETCH, PRE_TOPIC_ID_SCHEMA, "clientId", message));
             String valueString = getOnlyRecordValueFromResponse(
                     fetchableTopicResponse -> assertEquals(TOPIC_NAME, fetchableTopicResponse.topic())
@@ -94,17 +109,14 @@ class TopicEncryptionFilterTest {
     }
 
     @Test
-    public void testEncryptionRoundtripWithPostTopicIdFetchRequest(KafkaCluster cluster, Admin admin) {
-        try (var tester = kroxyliciousTester(topicEncryptionConfig(cluster));
-             Producer<String, String> producer = tester.producer();
+    public void testEncryptionRoundtripWithPostTopicIdFetchRequest(Admin admin) {
+        try (Producer<String, String> producer = tester.producer();
              KafkaClient client = tester.singleRequestClient()
         ) {
             CreateTopicsResult result = admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1)));
             Uuid topicUuid = result.topicId(TOPIC_NAME).get(10, TimeUnit.SECONDS);
             producer.send(new ProducerRecord<>(TOPIC_NAME, UNENCRYPTED_VALUE)).get(10, TimeUnit.SECONDS);
-            FetchRequestData message = fetchRequestWith(fetchTopic -> {
-                fetchTopic.setTopicId(topicUuid);
-            });
+            FetchRequestData message = fetchRequestWith(fetchTopic -> fetchTopic.setTopicId(topicUuid));
             Response responseCompletableFuture = client.getSync(new Request(ApiKeys.FETCH, POST_TOPIC_ID_SCHEMA, "clientId", message));
             String valueString = getOnlyRecordValueFromResponse(
                     fetchableTopicResponse -> assertEquals(topicUuid, fetchableTopicResponse.topicId())
@@ -113,10 +125,6 @@ class TopicEncryptionFilterTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private static KroxyliciousConfigBuilder topicEncryptionConfig(KafkaCluster cluster) {
-        return withDefaultFilters(proxy(cluster)).addNewFilter().withType(TOPIC_ENCRYPTION_SHORTNAME).endFilter();
     }
 
     @NotNull

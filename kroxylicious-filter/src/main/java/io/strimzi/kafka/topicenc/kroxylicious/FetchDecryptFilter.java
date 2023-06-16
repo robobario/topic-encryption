@@ -4,7 +4,6 @@ import io.kroxylicious.proxy.filter.FetchRequestFilter;
 import io.kroxylicious.proxy.filter.FetchResponseFilter;
 import io.kroxylicious.proxy.filter.KrpcFilterContext;
 import io.kroxylicious.proxy.filter.MetadataResponseFilter;
-import io.kroxylicious.proxy.filter.ProduceRequestFilter;
 import io.strimzi.kafka.topicenc.EncryptionModule;
 import io.strimzi.kafka.topicenc.kms.KmsDefinition;
 import io.strimzi.kafka.topicenc.kms.test.TestKms;
@@ -16,8 +15,6 @@ import org.apache.kafka.common.message.FetchResponseData;
 import org.apache.kafka.common.message.MetadataRequestData;
 import org.apache.kafka.common.message.MetadataResponseData;
 import org.apache.kafka.common.message.MetadataResponseDataJsonConverter;
-import org.apache.kafka.common.message.ProduceRequestData;
-import org.apache.kafka.common.message.ProduceResponseData;
 import org.apache.kafka.common.message.RequestHeaderData;
 import org.apache.kafka.common.message.ResponseHeaderData;
 import org.apache.kafka.common.protocol.Errors;
@@ -31,9 +28,9 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-public class TopicEncryptionFilter implements ProduceRequestFilter, FetchRequestFilter, FetchResponseFilter, MetadataResponseFilter {
+public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilter, MetadataResponseFilter {
 
-    private static final Logger log = LoggerFactory.getLogger(TopicEncryptionFilter.class);
+    private static final Logger log = LoggerFactory.getLogger(FetchDecryptFilter.class);
     public static final short METADATA_VERSION_SUPPORTING_TOPIC_IDS = (short) 10;
     private final Map<Uuid, String> topicUuidToName = new HashMap<>();
 
@@ -111,42 +108,9 @@ public class TopicEncryptionFilter implements ProduceRequestFilter, FetchRequest
     private boolean isResolvable(FetchResponseData.FetchableTopicResponse fetchableTopicResponse) {
         return (fetchableTopicResponse.topic() != null && !fetchableTopicResponse.topic().equals("")) || topicUuidToName.containsKey(fetchableTopicResponse.topicId());
     }
+
     private boolean isResolvable(FetchRequestData.FetchTopic fetchTopic) {
         return (fetchTopic.topic() != null && !fetchTopic.topic().equals("")) || topicUuidToName.containsKey(fetchTopic.topicId());
-    }
-
-    @Override
-    public void onProduceRequest(short apiVersion, RequestHeaderData header, ProduceRequestData request, KrpcFilterContext context) {
-        try {
-            for (ProduceRequestData.TopicProduceData topicDatum : request.topicData()) {
-                try {
-                    module.encrypt(topicDatum);
-                } catch (Exception e) {
-                    log.error("Failed to encrypt a produceRequest for topic: " + topicDatum.name(), e);
-                    throw new RuntimeException(e);
-                }
-            }
-            context.forwardRequest(header, request);
-        } catch (Exception e) {
-            sendErrorProduceResponse(request, context);
-        }
-    }
-
-    private static void sendErrorProduceResponse(ProduceRequestData request, KrpcFilterContext context) {
-        ProduceResponseData response = new ProduceResponseData();
-        for (ProduceRequestData.TopicProduceData topicDatum : request.topicData()) {
-            ProduceResponseData.TopicProduceResponse topicResponse = new ProduceResponseData.TopicProduceResponse();
-            topicResponse.setName(topicDatum.name());
-            for (ProduceRequestData.PartitionProduceData partitionDatum : topicDatum.partitionData()) {
-                ProduceResponseData.PartitionProduceResponse partitionProduceResponse = new ProduceResponseData.PartitionProduceResponse();
-                partitionProduceResponse.setIndex(partitionDatum.index());
-                partitionProduceResponse.setErrorMessage(Errors.UNKNOWN_SERVER_ERROR.message());
-                partitionProduceResponse.setErrorCode(Errors.UNKNOWN_SERVER_ERROR.code());
-                topicResponse.partitionResponses().add(partitionProduceResponse);
-            }
-            response.responses().add(topicResponse);
-        }
-        context.forwardResponse(response);
     }
 
     @Override
@@ -156,11 +120,9 @@ public class TopicEncryptionFilter implements ProduceRequestFilter, FetchRequest
     }
 
     private void cacheTopicIdToName(MetadataResponseData response, short apiVersion) {
-        if(log.isDebugEnabled()){
+        if (log.isDebugEnabled()) {
             MetadataResponseDataJsonConverter.write(response, apiVersion);
         }
-        response.topics().forEach(topic -> {
-            topicUuidToName.put(topic.topicId(), topic.name());
-        });
+        response.topics().forEach(topic -> topicUuidToName.put(topic.topicId(), topic.name()));
     }
 }
