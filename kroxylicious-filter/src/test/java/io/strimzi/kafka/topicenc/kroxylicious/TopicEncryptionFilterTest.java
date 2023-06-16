@@ -12,6 +12,7 @@ import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -32,11 +33,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import static io.kroxylicious.test.tester.KroxyliciousConfigUtils.proxy;
 import static io.kroxylicious.test.tester.KroxyliciousConfigUtils.withDefaultFilters;
@@ -44,6 +44,7 @@ import static io.kroxylicious.test.tester.KroxyliciousTesters.kroxyliciousTester
 import static io.strimzi.kafka.topicenc.kroxylicious.TopicEncryptionContributor.TOPIC_ENCRYPTION_SHORTNAME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @ExtendWith(KafkaClusterExtension.class)
 class TopicEncryptionFilterTest {
@@ -54,13 +55,13 @@ class TopicEncryptionFilterTest {
     public static final String UNENCRYPTED_VALUE = "unencryptedValue";
 
     @Test
-    public void testEncryptionRoundtrip(KafkaCluster cluster) {
-        KroxyliciousConfigBuilder configBuilder = withDefaultFilters(proxy(cluster)).addNewFilter().withType(TOPIC_ENCRYPTION_SHORTNAME).endFilter();
-        try (var tester = kroxyliciousTester(configBuilder);
+    public void testEncryptionRoundtrip(KafkaCluster cluster, Admin admin) {
+        try (var tester = kroxyliciousTester(topicEncryptionConfig(cluster));
              Producer<String, String> producer = tester.producer();
              Consumer<String, byte[]> kafkaClusterConsumer = getConsumer(cluster);
              Consumer<String, byte[]> proxyConsumer = tester.consumer(Serdes.String(), Serdes.ByteArray(), Map.of(ConsumerConfig.GROUP_ID_CONFIG, "another-group-id", ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"))
         ) {
+            admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1))).all().get(10, TimeUnit.SECONDS);
             producer.send(new ProducerRecord<>(TOPIC_NAME, UNENCRYPTED_VALUE)).get(10, TimeUnit.SECONDS);
             ConsumerRecord<String, byte[]> clusterRecord = getOnlyRecord(kafkaClusterConsumer, TOPIC_NAME);
             ConsumerRecord<String, byte[]> proxiedRecord = getOnlyRecord(proxyConsumer, TOPIC_NAME);
@@ -73,12 +74,11 @@ class TopicEncryptionFilterTest {
 
     @Test
     public void testEncryptionRoundtripWithPreTopicIdFetchRequest(KafkaCluster cluster, Admin admin) {
-        admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1)));
-        KroxyliciousConfigBuilder configBuilder = withDefaultFilters(proxy(cluster)).addNewFilter().withType(TOPIC_ENCRYPTION_SHORTNAME).endFilter();
-        try (var tester = kroxyliciousTester(configBuilder);
+        try (var tester = kroxyliciousTester(topicEncryptionConfig(cluster));
              Producer<String, String> producer = tester.producer();
              KafkaClient client = tester.singleRequestClient()
         ) {
+            admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1))).all().get(10, TimeUnit.SECONDS);
             producer.send(new ProducerRecord<>(TOPIC_NAME, UNENCRYPTED_VALUE)).get(10, TimeUnit.SECONDS);
             FetchRequestData message = fetchRequestWith(fetchTopic -> {
                 fetchTopic.setTopic(TOPIC_NAME);
@@ -94,14 +94,13 @@ class TopicEncryptionFilterTest {
     }
 
     @Test
-    public void testEncryptionRoundtripWithPostTopicIdFetchRequest(KafkaCluster cluster, Admin admin) throws ExecutionException, InterruptedException, TimeoutException {
-        CreateTopicsResult result = admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1)));
-        Uuid topicUuid = result.topicId(TOPIC_NAME).get(10, TimeUnit.SECONDS);
-        KroxyliciousConfigBuilder configBuilder = withDefaultFilters(proxy(cluster)).addNewFilter().withType(TOPIC_ENCRYPTION_SHORTNAME).endFilter();
-        try (var tester = kroxyliciousTester(configBuilder);
+    public void testEncryptionRoundtripWithPostTopicIdFetchRequest(KafkaCluster cluster, Admin admin) {
+        try (var tester = kroxyliciousTester(topicEncryptionConfig(cluster));
              Producer<String, String> producer = tester.producer();
              KafkaClient client = tester.singleRequestClient()
         ) {
+            CreateTopicsResult result = admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1)));
+            Uuid topicUuid = result.topicId(TOPIC_NAME).get(10, TimeUnit.SECONDS);
             producer.send(new ProducerRecord<>(TOPIC_NAME, UNENCRYPTED_VALUE)).get(10, TimeUnit.SECONDS);
             FetchRequestData message = fetchRequestWith(fetchTopic -> {
                 fetchTopic.setTopicId(topicUuid);
@@ -114,6 +113,10 @@ class TopicEncryptionFilterTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static KroxyliciousConfigBuilder topicEncryptionConfig(KafkaCluster cluster) {
+        return withDefaultFilters(proxy(cluster)).addNewFilter().withType(TOPIC_ENCRYPTION_SHORTNAME).endFilter();
     }
 
     @NotNull
@@ -151,7 +154,13 @@ class TopicEncryptionFilterTest {
 
     private static ConsumerRecord<String, byte[]> getOnlyRecord(Consumer<String, byte[]> kafkaClusterConsumer, String topic) {
         kafkaClusterConsumer.subscribe(List.of(topic));
-        return kafkaClusterConsumer.poll(Duration.ofSeconds(10)).records(topic).iterator().next();
+        ConsumerRecords<String, byte[]> poll = kafkaClusterConsumer.poll(Duration.ofSeconds(10));
+        if (poll.count() != 1) {
+            fail("expected to poll exactly one record from Kafka, received " + poll.count());
+        }
+        Iterable<ConsumerRecord<String, byte[]>> records = poll.records(topic);
+        Iterator<ConsumerRecord<String, byte[]>> iterator = records.iterator();
+        return iterator.next();
     }
 
     @NotNull

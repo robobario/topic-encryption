@@ -81,17 +81,11 @@
                                     <exclude>org.latencyutils:*</exclude>
                                     <exclude>org.apache.kafka:*</exclude>
                                     <exclude>com.github.luben:*</exclude>
-                                    <exclude>com.github.luben:*</exclude>
                                     <exclude>org.lz4:*</exclude>
                                     <exclude>org.xerial.snappy:*</exclude>
                                     <exclude>com.google.code.findbugs:*</exclude>
                                 </excludes>
                             </artifactSet>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>io.strimzi.kafka.proxy.vertx.VertRunner</mainClass>
-                                </transformer>
-                            </transformers>
                         </configuration>
                         <goals>
                             <goal>shade</goal>
