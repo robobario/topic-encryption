@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>io.strimzi</groupId>
+        <artifactId>topic-encryption</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>kroxylicious-filter</artifactId>
+    <name>Kroxylicious Filter</name>
+    <description>Integration with Kroxylicious - an proxy framework for Apache Kafka</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.strimzi</groupId>
+            <artifactId>encmod</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.strimzi</groupId>
+            <artifactId>kms-test</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-filter-api</artifactId>
+            <version>0.2.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>3.4.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious.testing</groupId>
+            <artifactId>testing-junit5-extension</artifactId>
+            <version>0.2.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-test-tools</artifactId>
+            <version>0.2.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.9.3</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.sundr</groupId>
+            <artifactId>sundr-core</artifactId>
+            <version>0.94.0</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>${maven.shade.version}</version>
+                <executions>
+                    <execution>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>fat</shadedClassifierName>
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>org.slf4j:*</exclude>
+                                    <exclude>com.github.spotbugs:spotbugs-annotations</exclude>
+                                    <exclude>com.fasterxml.jackson*</exclude>
+                                    <exclude>io.micrometer:*</exclude>
+                                    <exclude>org.HdrHistogram:*</exclude>
+                                    <exclude>org.latencyutils:*</exclude>
+                                    <exclude>org.apache.kafka:*</exclude>
+                                    <exclude>com.github.luben:*</exclude>
+                                    <exclude>org.lz4:*</exclude>
+                                    <exclude>org.xerial.snappy:*</exclude>
+                                    <exclude>com.google.code.findbugs:*</exclude>
+                                </excludes>
+                            </artifactSet>
+                        </configuration>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <phase>package</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
