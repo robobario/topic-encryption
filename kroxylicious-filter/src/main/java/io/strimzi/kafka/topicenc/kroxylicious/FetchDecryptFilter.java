@@ -24,9 +24,11 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
-import java.util.stream.Stream;
+
+import static java.util.stream.Collectors.toSet;
 
 public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilter, MetadataResponseFilter {
 
@@ -40,8 +42,8 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
     public void onFetchRequest(short apiVersion, RequestHeaderData header, FetchRequestData request, KrpcFilterContext context) {
         boolean allTopicsResolvableToName = request.topics().stream().allMatch(this::isResolvable);
         if (!allTopicsResolvableToName) {
-            Stream<Uuid> topicIdsToResolve = request.topics().stream().filter(Predicate.not(this::isResolvable)).map(FetchRequestData.FetchTopic::topicId);
-            // fire-and-forget a metadata request to resolve topic ids, preparing for fetch response
+            Set<Uuid> topicIdsToResolve = request.topics().stream().filter(Predicate.not(this::isResolvable)).map(FetchRequestData.FetchTopic::topicId).collect(toSet());
+            // send a background metadata request to resolve topic ids, preparing for fetch response
             resolveAndCache(context, topicIdsToResolve);
         }
         context.forwardRequest(header, request);
@@ -49,29 +51,38 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
 
     @Override
     public void onFetchResponse(short apiVersion, ResponseHeaderData header, FetchResponseData response, KrpcFilterContext context) {
-        boolean allTopicsResolvableToName = response.responses().stream().allMatch(this::isResolvable);
-        if (allTopicsResolvableToName) {
+        var unresolvedTopicIds = getUnresolvedTopicIds(response);
+        if (unresolvedTopicIds.isEmpty()) {
             decryptFetchResponse(header, response, context);
         } else {
-            log.warn("We did not know all topic names for topic ids within a fetch response, requesting metadata and returning error response");
-            resolveTopicsAndReturnError(header, response, context);
+            log.warn("We did not know all topic names for {} topic ids within a fetch response, requesting metadata and returning error response", unresolvedTopicIds.size());
+            log.debug("We did not know all topic names for topic ids {} within a fetch response, requesting metadata and returning error response", unresolvedTopicIds);
+            // we return an error rather than delaying the response to prevent out-of-order responses to the Consumer client.
+            // The Filter API only supports synchronous work currently.
+            resolveTopicsAndReturnError(header, context, unresolvedTopicIds);
         }
+    }
+
+    private Set<Uuid> getUnresolvedTopicIds(FetchResponseData response) {
+        return response.responses().stream()
+                .filter(Predicate.not(this::isResolvable))
+                .map(FetchResponseData.FetchableTopicResponse::topicId)
+                .collect(toSet());
     }
 
     /**
      * We should know the topic names by the time we get the response, because the fetch request sends a metadata request
      * for unknown topic ids before sending the fetch request. This is a safeguard in case that request fails somehow.
      */
-    private void resolveTopicsAndReturnError(ResponseHeaderData header, FetchResponseData response, KrpcFilterContext context) {
-        Stream<Uuid> topicIdsToResolve = response.responses().stream().filter(Predicate.not(this::isResolvable)).map(FetchResponseData.FetchableTopicResponse::topicId);
-        // fire-and-forget a metadata request to resolve topic ids, preparing for future fetches
+    private void resolveTopicsAndReturnError(ResponseHeaderData header, KrpcFilterContext context, Set<Uuid> topicIdsToResolve) {
+        // send a background metadata request to resolve topic ids, preparing for future fetches
         resolveAndCache(context, topicIdsToResolve);
         FetchResponseData data = new FetchResponseData();
         data.setErrorCode(Errors.UNKNOWN_SERVER_ERROR.code());
         context.forwardResponse(header, data);
     }
 
-    private void resolveAndCache(KrpcFilterContext context, Stream<Uuid> topicIdsToResolve) {
+    private void resolveAndCache(KrpcFilterContext context, Set<Uuid> topicIdsToResolve) {
         MetadataRequestData request = new MetadataRequestData();
         topicIdsToResolve.forEach(uuid -> {
             MetadataRequestData.MetadataRequestTopic e = new MetadataRequestData.MetadataRequestTopic();
@@ -88,7 +99,7 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
         for (FetchResponseData.FetchableTopicResponse fetchResponse : response.responses()) {
             Uuid originalUuid = fetchResponse.topicId();
             String originalName = fetchResponse.topic();
-            if (originalName == null || originalName.equals("")) {
+            if (Strings.isNullOrBlank(originalName)) {
                 fetchResponse.setTopic(topicUuidToName.get(originalUuid));
                 fetchResponse.setTopicId(null);
             }
@@ -106,11 +117,11 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
 
 
     private boolean isResolvable(FetchResponseData.FetchableTopicResponse fetchableTopicResponse) {
-        return (fetchableTopicResponse.topic() != null && !fetchableTopicResponse.topic().equals("")) || topicUuidToName.containsKey(fetchableTopicResponse.topicId());
+        return !Strings.isNullOrBlank(fetchableTopicResponse.topic()) || topicUuidToName.containsKey(fetchableTopicResponse.topicId());
     }
 
     private boolean isResolvable(FetchRequestData.FetchTopic fetchTopic) {
-        return (fetchTopic.topic() != null && !fetchTopic.topic().equals("")) || topicUuidToName.containsKey(fetchTopic.topicId());
+        return !Strings.isNullOrBlank(fetchTopic.topic()) || topicUuidToName.containsKey(fetchTopic.topicId());
     }
 
     @Override
@@ -120,8 +131,8 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
     }
 
     private void cacheTopicIdToName(MetadataResponseData response, short apiVersion) {
-        if (log.isDebugEnabled()) {
-            MetadataResponseDataJsonConverter.write(response, apiVersion);
+        if (log.isTraceEnabled()) {
+            log.trace("received metadata response: {}", MetadataResponseDataJsonConverter.write(response, apiVersion));
         }
         response.topics().forEach(topic -> topicUuidToName.put(topic.topicId(), topic.name()));
     }
