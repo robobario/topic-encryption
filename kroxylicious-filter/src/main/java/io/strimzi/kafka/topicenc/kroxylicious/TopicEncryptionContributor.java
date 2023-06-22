@@ -9,8 +9,8 @@ public class TopicEncryptionContributor extends BaseContributor<KrpcFilter> impl
     public static final String DECRYPT_FETCH = "TopicEncryption::DecryptFetch";
     public static final String ENCRYPT_PRODUCE = "TopicEncryption::EncryptProduce";
     public static final BaseContributorBuilder<KrpcFilter> FILTERS = BaseContributor.<KrpcFilter>builder()
-            .add(DECRYPT_FETCH, FetchDecryptFilter::new)
-            .add(ENCRYPT_PRODUCE, ProduceEncryptFilter::new);
+            .add(DECRYPT_FETCH, TopicEncryptionConfig.class, FetchDecryptFilter::new)
+            .add(ENCRYPT_PRODUCE, TopicEncryptionConfig.class, ProduceEncryptFilter::new);
 
     public TopicEncryptionContributor() {
         super(FILTERS);

@@ -5,10 +5,6 @@ import io.kroxylicious.proxy.filter.FetchResponseFilter;
 import io.kroxylicious.proxy.filter.KrpcFilterContext;
 import io.kroxylicious.proxy.filter.MetadataResponseFilter;
 import io.strimzi.kafka.topicenc.EncryptionModule;
-import io.strimzi.kafka.topicenc.kms.KmsDefinition;
-import io.strimzi.kafka.topicenc.kms.test.TestKms;
-import io.strimzi.kafka.topicenc.policy.InMemoryPolicyRepository;
-import io.strimzi.kafka.topicenc.policy.TopicPolicy;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.message.FetchRequestData;
 import org.apache.kafka.common.message.FetchResponseData;
@@ -22,12 +18,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
 
+import static io.strimzi.kafka.topicenc.common.Strings.isNullOrEmpty;
 import static java.util.stream.Collectors.toSet;
 
 public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilter, MetadataResponseFilter {
@@ -36,7 +32,11 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
     public static final short METADATA_VERSION_SUPPORTING_TOPIC_IDS = (short) 12;
     private final Map<Uuid, String> topicUuidToName = new HashMap<>();
 
-    private final EncryptionModule module = new EncryptionModule(new InMemoryPolicyRepository(List.of(new TopicPolicy().setTopic(TopicPolicy.ALL_TOPICS).setKms(new TestKms(new KmsDefinition())))));
+    private final EncryptionModule module;
+
+    public FetchDecryptFilter(TopicEncryptionConfig config) {
+        module = new EncryptionModule(config.getPolicyRepository());
+    }
 
     @Override
     public void onFetchRequest(short apiVersion, RequestHeaderData header, FetchRequestData request, KrpcFilterContext context) {
@@ -99,7 +99,7 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
         for (FetchResponseData.FetchableTopicResponse fetchResponse : response.responses()) {
             Uuid originalUuid = fetchResponse.topicId();
             String originalName = fetchResponse.topic();
-            if (Strings.isNullOrBlank(originalName)) {
+            if (isNullOrEmpty(originalName)) {
                 fetchResponse.setTopic(topicUuidToName.get(originalUuid));
                 fetchResponse.setTopicId(null);
             }
@@ -117,11 +117,11 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
 
 
     private boolean isResolvable(FetchResponseData.FetchableTopicResponse fetchableTopicResponse) {
-        return !Strings.isNullOrBlank(fetchableTopicResponse.topic()) || topicUuidToName.containsKey(fetchableTopicResponse.topicId());
+        return !isNullOrEmpty(fetchableTopicResponse.topic()) || topicUuidToName.containsKey(fetchableTopicResponse.topicId());
     }
 
     private boolean isResolvable(FetchRequestData.FetchTopic fetchTopic) {
-        return !Strings.isNullOrBlank(fetchTopic.topic()) || topicUuidToName.containsKey(fetchTopic.topicId());
+        return !isNullOrEmpty(fetchTopic.topic()) || topicUuidToName.containsKey(fetchTopic.topicId());
     }
 
     @Override
@@ -136,10 +136,10 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
         }
         response.topics().forEach(topic -> {
             if (topic.errorCode() == 0) {
-                if (topic.topicId() != null && !Strings.isNullOrBlank(topic.name())) {
+                if (topic.topicId() != null && !isNullOrEmpty(topic.name())) {
                     topicUuidToName.put(topic.topicId(), topic.name());
                 } else {
-                    log.warn("not caching uuid to name because a component was null or empty, topic id {}, topic name {}", topic.topicId(), topic.name());
+                    log.info("not caching uuid to name because a component was null or empty, topic id {}, topic name {}", topic.topicId(), topic.name());
                 }
             } else {
                 log.warn("error {} on metadata request for topic id {}, topic name {}", Errors.forCode(topic.errorCode()), topic.topicId(), topic.name());

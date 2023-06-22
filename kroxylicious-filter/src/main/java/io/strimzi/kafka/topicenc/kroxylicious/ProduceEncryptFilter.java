@@ -3,10 +3,6 @@ package io.strimzi.kafka.topicenc.kroxylicious;
 import io.kroxylicious.proxy.filter.KrpcFilterContext;
 import io.kroxylicious.proxy.filter.ProduceRequestFilter;
 import io.strimzi.kafka.topicenc.EncryptionModule;
-import io.strimzi.kafka.topicenc.kms.KmsDefinition;
-import io.strimzi.kafka.topicenc.kms.test.TestKms;
-import io.strimzi.kafka.topicenc.policy.InMemoryPolicyRepository;
-import io.strimzi.kafka.topicenc.policy.TopicPolicy;
 import org.apache.kafka.common.message.ProduceRequestData;
 import org.apache.kafka.common.message.ProduceResponseData;
 import org.apache.kafka.common.message.RequestHeaderData;
@@ -14,13 +10,16 @@ import org.apache.kafka.common.protocol.Errors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-
 public class ProduceEncryptFilter implements ProduceRequestFilter {
+
 
     private static final Logger log = LoggerFactory.getLogger(ProduceEncryptFilter.class);
 
-    private final EncryptionModule module = new EncryptionModule(new InMemoryPolicyRepository(List.of(new TopicPolicy().setTopic(TopicPolicy.ALL_TOPICS).setKms(new TestKms(new KmsDefinition())))));
+    private final EncryptionModule module;
+
+    public ProduceEncryptFilter(TopicEncryptionConfig config) {
+        module = new EncryptionModule(config.getPolicyRepository());
+    }
 
     @Override
     public void onProduceRequest(short apiVersion, RequestHeaderData header, ProduceRequestData request, KrpcFilterContext context) {
