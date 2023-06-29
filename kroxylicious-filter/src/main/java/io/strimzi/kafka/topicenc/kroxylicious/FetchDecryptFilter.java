@@ -33,7 +33,7 @@ import static java.util.stream.Collectors.toSet;
 public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilter, MetadataResponseFilter {
 
     private static final Logger log = LoggerFactory.getLogger(FetchDecryptFilter.class);
-    public static final short METADATA_VERSION_SUPPORTING_TOPIC_IDS = (short) 10;
+    public static final short METADATA_VERSION_SUPPORTING_TOPIC_IDS = (short) 12;
     private final Map<Uuid, String> topicUuidToName = new HashMap<>();
 
     private final EncryptionModule module = new EncryptionModule(new InMemoryPolicyRepository(List.of(new TopicPolicy().setTopic(TopicPolicy.ALL_TOPICS).setKms(new TestKms(new KmsDefinition())))));
@@ -134,6 +134,16 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
         if (log.isTraceEnabled()) {
             log.trace("received metadata response: {}", MetadataResponseDataJsonConverter.write(response, apiVersion));
         }
-        response.topics().forEach(topic -> topicUuidToName.put(topic.topicId(), topic.name()));
+        response.topics().forEach(topic -> {
+            if (topic.errorCode() == 0) {
+                if (topic.topicId() != null && !Strings.isNullOrBlank(topic.name())) {
+                    topicUuidToName.put(topic.topicId(), topic.name());
+                } else {
+                    log.warn("not caching uuid to name because a component was null or empty, topic id {}, topic name {}", topic.topicId(), topic.name());
+                }
+            } else {
+                log.warn("error {} on metadata request for topic id {}, topic name {}", Errors.forCode(topic.errorCode()), topic.topicId(), topic.name());
+            }
+        });
     }
 }
