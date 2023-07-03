@@ -62,7 +62,7 @@ public class AbstractKafkaMsgTest {
         // value is pulled from the correct offset.
         RequestHeader rh = new RequestHeader(ApiKeys.FETCH, (short) 12, "clientId", 1);
         FetchRequest fr = new FetchRequest.Builder(
-                rh.apiVersion(), rh.apiVersion(), 0, 500, 1, new HashMap<>()).build();
+                rh.apiVersion(), rh.apiVersion(), 0, 500, 1, 1, new HashMap<>()).build();
 
         AbstractKafkaMsg akm = new AbstractKafkaMsg(serializeToBuffer(rh, fr));
 
