@@ -1,5 +1,6 @@
 package io.strimzi.kafka.topicenc.kroxylicious;
 
+import io.kroxylicious.proxy.config.FilterDefinitionBuilder;
 import io.kroxylicious.test.Request;
 import io.kroxylicious.test.Response;
 import io.kroxylicious.test.client.KafkaClient;
@@ -113,7 +114,7 @@ class FetchDecryptionTest {
                 new TopicPolicy().setTopic(TOPIC_NAME_B).setKeyReference(TOPIC_NAME_B).setKmsName(KMS_NAME));
         Map<String, Object> topicEncryptionConfig = getConfiguration(tempDir, definitions, policies);
         tester = kroxyliciousTester(withDefaultFilters(proxy(cluster))
-                .addNewFilter().withType(DECRYPT_FETCH).withConfig(topicEncryptionConfig).endFilter()
+                .addToFilters(new FilterDefinitionBuilder(DECRYPT_FETCH).withConfig(topicEncryptionConfig).build())
         );
     }
 

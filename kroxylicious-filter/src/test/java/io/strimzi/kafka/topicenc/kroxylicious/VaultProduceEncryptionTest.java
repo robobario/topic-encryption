@@ -1,5 +1,6 @@
 package io.strimzi.kafka.topicenc.kroxylicious;
 
+import io.kroxylicious.proxy.config.FilterDefinitionBuilder;
 import io.kroxylicious.test.tester.KroxyliciousTester;
 import io.kroxylicious.testing.kafka.api.KafkaCluster;
 import io.kroxylicious.testing.kafka.junit5ext.KafkaClusterExtension;
@@ -78,7 +79,7 @@ class VaultProduceEncryptionTest {
         List<TopicPolicy> policies = List.of(new TopicPolicy().setTopic(TOPIC_NAME_A).setKeyReference(TOPIC_NAME_A).setKmsName(KMS_NAME), new TopicPolicy().setTopic(TOPIC_NAME_B).setKeyReference(TOPIC_NAME_B).setKmsName(KMS_NAME));
         Map<String, Object> topicEncryptionConfig = getConfiguration(tempDir, definitions, policies);
         tester = kroxyliciousTester(withDefaultFilters(proxy(cluster))
-                .addNewFilter().withType(ENCRYPT_PRODUCE).withConfig(topicEncryptionConfig).endFilter()
+                .addToFilters(new FilterDefinitionBuilder(ENCRYPT_PRODUCE).withConfig(topicEncryptionConfig).build())
         );
     }
 

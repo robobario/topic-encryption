@@ -11,7 +11,29 @@
     <name>Kroxylicious Filter</name>
     <description>Integration with Kroxylicious - an proxy framework for Apache Kafka</description>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.kroxylicious</groupId>
+                <artifactId>kroxylicious-filter-api-bom</artifactId>
+                <version>0.3.0-SNAPSHOT</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
     <dependencies>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-filter-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+<!--        had to include as it's provided through the api-->
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>io.strimzi</groupId>
             <artifactId>encmod</artifactId>
@@ -36,38 +58,21 @@
             <optional>true</optional>
         </dependency>
         <dependency>
-            <groupId>io.kroxylicious</groupId>
-            <artifactId>kroxylicious-filter-api</artifactId>
-            <version>0.2.0</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
-            <version>3.4.0</version>
+            <scope>provided</scope>
         </dependency>
-        <dependency>
-            <groupId>io.kroxylicious.testing</groupId>
-            <artifactId>testing-junit5-extension</artifactId>
-            <version>0.2.0</version>
-            <scope>test</scope>
-        </dependency>
+        <!--        maybe could be part of the filter api bom-->
         <dependency>
             <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-test-tools</artifactId>
-            <version>0.2.0</version>
+            <version>0.3.0-SNAPSHOT</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>5.9.3</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.sundr</groupId>
-            <artifactId>sundr-core</artifactId>
-            <version>0.94.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
