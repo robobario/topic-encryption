@@ -84,6 +84,7 @@ public class JsonPolicyLoader {
                 .map(policy -> policy.validate())
                 .map(policy -> validateKms(policy, kmsDefs))
                 .map(policy -> assignKms(policy, kmsDefs, kmsPool))
+                .map(JsonPolicyLoader::configureKeyReferenceFunction)
                 .collect(Collectors.toMap(JsonPolicyLoader::key, Function.identity()));
 
         // as an FYI, log unused kms defs:
@@ -160,6 +161,15 @@ public class JsonPolicyLoader {
         }
         policy.setKms(kms);
         // return policy for method chaining
+        return policy;
+    }
+
+    private static TopicPolicy configureKeyReferenceFunction(TopicPolicy policy) {
+        if(policy.getKeyReferenceSource() == null || policy.getKeyReferenceSource() == KeyReferenceSource.FIXED) {
+            policy.setKeyReferenceFunction(new FixedKeyReferenceFunction(policy.getKeyReference()));
+        } else {
+            throw new IllegalStateException("could not configure a key reference function");
+        }
         return policy;
     }
 

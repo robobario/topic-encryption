@@ -39,6 +39,7 @@ public class TestPolicyRepository implements PolicyRepository {
         policy = new TopicPolicy()
                 .setEncMethod("AesGcmV1")
                 .setKeyReference("test")
+                .setKeyReferenceFunction(new FixedKeyReferenceFunction("test"))
                 .setTopic(TopicPolicy.ALL_TOPICS)
                 .setKms(kms);
     }

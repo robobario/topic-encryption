@@ -43,7 +43,8 @@ public class EncryptionModule implements EncModControl {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EncryptionModule.class);
 
-    private Map<String, EncrypterDecrypter> keyCache;
+    // lowercase-TopicName -> KeyReference -> EncrypterDecrypter
+    private Map<String, Map<String, EncrypterDecrypter>> keyCache;
     private EncSerDer encSerDer;
     private PolicyRepository policyRepo;
 
@@ -55,16 +56,10 @@ public class EncryptionModule implements EncModControl {
 
     public boolean encrypt(TopicProduceData topicData)
             throws EncSerDerException, GeneralSecurityException, KmsException {
+        String topicKey = topicData.name().toLowerCase();
+        TopicPolicy topicPolicy = getTopicPolicy(topicKey);
 
-        final EncrypterDecrypter encrypter;
-        try {
-            encrypter = getTopicEncrypter(topicData.name());
-        } catch (Exception e) {
-            String msg = String.format("Error obtaining encrypter for topic: %s", topicData.name());
-            throw new KmsException(msg, e);
-        }
-
-        if (encrypter == null) {
+        if (topicPolicy == null) {
             LOGGER.debug("No encryption - topic {} is not configured for encryption",
                     topicData.name());
             return false;
@@ -78,6 +73,12 @@ public class EncryptionModule implements EncModControl {
             MemoryRecordsBuilder builder = createMemoryRecsBuilder(recs.buffer().capacity());
             for (org.apache.kafka.common.record.Record record : recs.records()) {
                 if (record.hasValue()) {
+                    String keyReference = topicPolicy.getKeyReferenceFunction().getKeyReference(record);
+                    if (keyReference == null || keyReference.isEmpty()) {
+                        throw new IllegalStateException("could not extract a keyReference from record");
+                    }
+
+                    EncrypterDecrypter encrypter = getOrCreateTopicCrypter(topicKey, keyReference, topicPolicy);
                     // encrypt record value:
                     byte[] plaintext = new byte[record.valueSize()];
                     record.value().get(plaintext);
@@ -93,20 +94,19 @@ public class EncryptionModule implements EncModControl {
         return true;
     }
 
+    private EncrypterDecrypter getOrCreateTopicCrypter(String topicKey, String keyReference, TopicPolicy topicPolicy) {
+        return keyCache.computeIfAbsent(topicKey, key -> new HashMap<>())
+                .computeIfAbsent(keyReference, keyRef -> createTopicEncrypter(topicPolicy, keyRef));
+    }
+
     public boolean decrypt(FetchableTopicResponse fetchRsp)
             throws EncSerDerException, GeneralSecurityException, KmsException {
+        String topicKey = fetchRsp.topic().toLowerCase();
+        TopicPolicy topicPolicy = getTopicPolicy(topicKey);
 
-        String topicName = fetchRsp.topic();
-        final EncrypterDecrypter encrypter;
-        try {
-            encrypter = getTopicEncrypter(topicName);
-        } catch (Exception e) {
-            String msg = String.format("Error obtaining encrypter for topic: %s ", topicName);
-            throw new KmsException(msg, e);
-        }
-
-        if (encrypter == null) {
-            LOGGER.debug("No decryption - topic {} is not configured for encryption", topicName);
+        if (topicPolicy == null) {
+            LOGGER.debug("No encryption - topic {} is not configured for encryption",
+                    fetchRsp.topic());
             return false;
         }
 
@@ -135,9 +135,11 @@ public class EncryptionModule implements EncModControl {
 
                     // serialize value into version, iv, ciphertext:
                     EncData md = encSerDer.deserialize(ciphertext);
+                    String keyReference = topicPolicy.getKeyReferenceFunction().getKeyReference(record);
+                    EncrypterDecrypter crypter = getOrCreateTopicCrypter(topicKey, keyReference, topicPolicy);
 
                     // decrypt, add to records builder:
-                    byte[] plaintext = encrypter.decrypt(md);
+                    byte[] plaintext = crypter.decrypt(md);
 
                     SimpleRecord newRec = new SimpleRecord(record.timestamp(), record.key(),
                             ByteBuffer.wrap(plaintext),
@@ -163,39 +165,21 @@ public class EncryptionModule implements EncModControl {
     /**
      * Consults the policy db whether a topic is to be encrypted. If topic is not to
      * be encrypted, returns null.
-     * 
+     *
      * @throws Exception
      */
-    protected EncrypterDecrypter getTopicEncrypter(String topicName) throws Exception {
-
-        String topicKey = topicName.toLowerCase();
-
-        // first check cache
-        EncrypterDecrypter enc = keyCache.get(topicKey);
-        if (enc != null) {
-            return enc;
+    protected EncrypterDecrypter createTopicEncrypter(TopicPolicy policy, String keyReference) {
+        try {
+            KeyMgtSystem kms = policy.getKms();
+            SecretKey key = kms.getKey(keyReference);
+            return new AesGcmEncrypter(key);
+        } catch (Exception e) {
+            throw new IllegalStateException("failed to create topic encrypter" + e);
         }
+    }
 
-        // query policy db for a policy for this topic:
-        TopicPolicy policy = policyRepo.getTopicPolicy(topicKey);
-        if (policy == null) {
-            // No encryption policy for this topic, return null,
-            // indicating encryption not required for this topic.
-            return null;
-        }
-
-        // encryption policy exists for this topic. Retrieve key
-        KeyMgtSystem kms = policy.getKms();
-        SecretKey key = kms.getKey(policy.getKeyReference());
-
-        // Instantiate the encrypter/decrypter for this topic.
-        // We always assume AES GCM encrypter now.
-        // TODO: factory for creating type of encrypter according to policy
-        enc = new AesGcmEncrypter(key);
-
-        // add to cache and return
-        keyCache.put(topicKey, enc);
-        return enc;
+    private TopicPolicy getTopicPolicy(String topicKey) {
+        return policyRepo.getTopicPolicy(topicKey);
     }
 
     private long getFirstOffset(MemoryRecords recs) {
@@ -216,7 +200,7 @@ public class EncryptionModule implements EncModControl {
     }
 
     private MemoryRecordsBuilder createMemoryRecsBuilder(int bufSize, int partitionEpoch,
-            long baseOffset) {
+                                                         long baseOffset) {
         ByteBuffer buffer = ByteBuffer.allocate(10); // will be expanded as needed
         return new MemoryRecordsBuilder(buffer, RecordBatch.CURRENT_MAGIC_VALUE,
                 CompressionType.NONE,

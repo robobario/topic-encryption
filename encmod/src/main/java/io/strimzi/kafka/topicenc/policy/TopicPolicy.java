@@ -38,6 +38,10 @@ public class TopicPolicy {
      */
     private String keyReference;
 
+    private KeyReferenceSource keyReferenceSource;
+
+    private KeyReferenceFunction keyReferenceFunction;
+
     /**
      * Key management system instance used in retrieving keys.
      */
@@ -57,7 +61,7 @@ public class TopicPolicy {
 
     /**
      * Returns the topic name to which this policy applies.
-     * 
+     *
      * @return the topic name
      */
     public String getTopic() {
@@ -66,7 +70,7 @@ public class TopicPolicy {
 
     /**
      * Set the topic name to which this policy applies.
-     * 
+     *
      * @param topic the topic name
      * @return this instance
      */
@@ -78,7 +82,7 @@ public class TopicPolicy {
     /**
      * Returns the optional encryption method in use. Can be null is was not
      * specified.
-     * 
+     *
      * @return a string indicating the encryption method
      */
     public String getEncMethod() {
@@ -87,7 +91,7 @@ public class TopicPolicy {
 
     /**
      * Set the encryption method to be applied for this topic.
-     * 
+     *
      * @param topic the encryption method
      * @return this instance
      */
@@ -99,7 +103,7 @@ public class TopicPolicy {
     /**
      * Return the key reference used to identify the key within the key management
      * system to be used for this topic.
-     * 
+     *
      * @return the configured key reference.
      */
     public String getKeyReference() {
@@ -108,7 +112,7 @@ public class TopicPolicy {
 
     /**
      * Set the reference of the key to be used for this topic.
-     * 
+     *
      * @param topic the key reference
      * @return this instance
      */
@@ -120,7 +124,7 @@ public class TopicPolicy {
     /**
      * Returns the key management system instance used to retrieve the key for this
      * topic.
-     * 
+     *
      * @return a KeyMgtSystem instance
      */
     public KeyMgtSystem getKms() {
@@ -129,7 +133,7 @@ public class TopicPolicy {
 
     /**
      * Set the key management instance to be used for this topic.
-     * 
+     *
      * @param topic the kms instance
      * @return this instance
      */
@@ -140,7 +144,7 @@ public class TopicPolicy {
 
     /**
      * Return the name of the key management system definition used for this topic.
-     * 
+     *
      * @return the kms configuration name
      */
     public String getKmsName() {
@@ -150,7 +154,7 @@ public class TopicPolicy {
     /**
      * Set the name identifying the key management system definition in the
      * configuration to be used for this topic.
-     * 
+     *
      * @param topic the name of the kms definition in the configuration.
      * @return this instance
      */
@@ -161,7 +165,7 @@ public class TopicPolicy {
 
     /**
      * Return the credential used in accessing the key management system
-     * 
+     *
      * @return the credential
      */
     public String getCredential() {
@@ -171,7 +175,7 @@ public class TopicPolicy {
     /**
      * Set the credential, such as a token, to be used when accessing the key
      * management system.
-     * 
+     *
      * @param topic the credential
      * @return this instance
      */
@@ -183,7 +187,7 @@ public class TopicPolicy {
     /**
      * Validate this policy. Asserts that all required properties are present. If
      * the policy is not valid, an IllegalArgumentException exception is thrown
-     * 
+     *
      * @return this instance when the policy is valid.
      */
     public TopicPolicy validate() {
@@ -196,21 +200,27 @@ public class TopicPolicy {
                     getTopic());
             throw new IllegalArgumentException(msg);
         }
+        if (keyReferenceSource == null || keyReferenceSource == KeyReferenceSource.FIXED) {
+            validateKeyReference();
+        }
+        return this;
+    }
+
+    private void validateKeyReference() {
         if (Strings.isNullOrEmpty(getKeyReference())) {
             String msg = String.format(
                     "Policy for topic %s does not contain a key reference.",
                     getTopic());
             throw new IllegalArgumentException(msg);
         }
-        return this;
     }
 
     /**
      * Indicates whether this topic policy is a "wildcard" policy, that is, it
      * applies to all topics.
-     * 
+     *
      * @return true if the topic's policy name indicates all topics (i.e., is the
-     *         wildcard), otherwise returns false.
+     * wildcard), otherwise returns false.
      */
     public boolean isWildcardPolicy() {
         return isWildcard(this);
@@ -218,12 +228,29 @@ public class TopicPolicy {
 
     /**
      * A static method indicating whether the provided policy is a wildcard policy.
-     * 
+     *
      * @param policy the policy to assess
      * @return true if the topic's policy name indicates all topics (i.e., is the
-     *         wildcard), otherwise returns false.
+     * wildcard), otherwise returns false.
      */
     public static boolean isWildcard(TopicPolicy policy) {
         return TopicPolicy.ALL_TOPICS.equals(policy.getTopic());
+    }
+
+    public KeyReferenceFunction getKeyReferenceFunction() {
+        return keyReferenceFunction;
+    }
+
+    public TopicPolicy setKeyReferenceFunction(KeyReferenceFunction keyReferenceFunction) {
+        this.keyReferenceFunction = keyReferenceFunction;
+        return this;
+    }
+
+    public KeyReferenceSource getKeyReferenceSource() {
+        return keyReferenceSource;
+    }
+
+    public void setKeyReferenceSource(KeyReferenceSource keyReferenceSource) {
+        this.keyReferenceSource = keyReferenceSource;
     }
 }
