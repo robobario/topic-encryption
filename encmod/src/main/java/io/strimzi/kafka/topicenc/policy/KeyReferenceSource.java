@@ -1,5 +1,6 @@
 package io.strimzi.kafka.topicenc.policy;
 
 public enum KeyReferenceSource {
-    FIXED
+    FIXED,
+    RECORD_KEY
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.strimzi.kafka.topicenc.kms.KmsDefinition;
 import io.strimzi.kafka.topicenc.kroxylicious.Vault;
 import io.strimzi.kafka.topicenc.kroxylicious.kms.MockKms;
+import io.strimzi.kafka.topicenc.policy.KeyReferenceSource;
 import io.strimzi.kafka.topicenc.policy.TopicPolicy;
 
 import javax.crypto.SecretKey;
@@ -27,7 +28,7 @@ public class EncryptionModuleConfigurer {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    record TestTopicPolicy(String topic, String keyReference, String kmsName) {
+    record TestTopicPolicy(String topic, String keyReference, String kmsName, KeyReferenceSource keyReferenceSource) {
 
     }
 
@@ -44,7 +45,7 @@ public class EncryptionModuleConfigurer {
             File file = new File(tempDir, "topicPolicies-" + UUID.randomUUID() + ".json");
             // cannot serialize the real TopicPolicy class because it serializes some unexpected fields like isWildcard
             // that cannot be deserialized
-            Set<TestTopicPolicy> policiesToWrite = policies.stream().map(topicPolicy -> new TestTopicPolicy(topicPolicy.getTopic(), topicPolicy.getKeyReference(), topicPolicy.getKmsName())).collect(Collectors.toSet());
+            Set<TestTopicPolicy> policiesToWrite = policies.stream().map(topicPolicy -> new TestTopicPolicy(topicPolicy.getTopic(), topicPolicy.getKeyReference(), topicPolicy.getKmsName(), topicPolicy.getKeyReferenceSource())).collect(Collectors.toSet());
             Files.writeString(file.toPath(), MAPPER.writeValueAsString(policiesToWrite), UTF_8);
             return file;
         } catch (IOException e) {

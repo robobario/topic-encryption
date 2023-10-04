@@ -165,12 +165,18 @@ public class JsonPolicyLoader {
     }
 
     private static TopicPolicy configureKeyReferenceFunction(TopicPolicy policy) {
-        if(policy.getKeyReferenceSource() == null || policy.getKeyReferenceSource() == KeyReferenceSource.FIXED) {
-            policy.setKeyReferenceFunction(new FixedKeyReferenceFunction(policy.getKeyReference()));
-        } else {
-            throw new IllegalStateException("could not configure a key reference function");
-        }
+        policy.setKeyReferenceFunction(createKeyReferenceFunction(policy));
         return policy;
+    }
+
+    private static KeyReferenceFunction createKeyReferenceFunction(TopicPolicy policy) {
+        if(policy.getKeyReferenceSource() == null) {
+            return new FixedKeyReferenceFunction(policy.getKeyReference());
+        }
+        return switch (policy.getKeyReferenceSource()) {
+            case FIXED -> new FixedKeyReferenceFunction(policy.getKeyReference());
+            case RECORD_KEY -> RecordKeyKeyReferenceFunction.instance();
+        };
     }
 
     private static String key(KmsDefinition kmsDef) {

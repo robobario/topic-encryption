@@ -250,7 +250,8 @@ public class TopicPolicy {
         return keyReferenceSource;
     }
 
-    public void setKeyReferenceSource(KeyReferenceSource keyReferenceSource) {
+    public TopicPolicy setKeyReferenceSource(KeyReferenceSource keyReferenceSource) {
         this.keyReferenceSource = keyReferenceSource;
+        return this;
     }
 }
