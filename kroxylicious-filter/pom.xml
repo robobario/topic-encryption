@@ -9,11 +9,12 @@
     <modelVersion>4.0.0</modelVersion>
     <artifactId>kroxylicious-filter</artifactId>
     <name>Kroxylicious Filter</name>
-    <description>Integration with Kroxylicious - an proxy framework for Apache Kafka</description>
+    <description>Integration with Kroxylicious - a proxy framework for Apache Kafka</description>
 
 
 <!--    https://s01.oss.sonatype.org/service/local/repositories/iokroxylicious-1019/content/io/kroxylicious/integrationtests/0.3.0/integrationtests-0.3.0.jar-->
 
+<!--
     <repositories>
         <repository>
             <releases>
@@ -21,11 +22,6 @@
                 <updatePolicy>always</updatePolicy>
                 <checksumPolicy>warn</checksumPolicy>
             </releases>
-            <!--        <snapshots>-->
-            <!--            <enabled>true</enabled>-->
-            <!--            <updatePolicy>never</updatePolicy>-->
-            <!--            <checksumPolicy>fail</checksumPolicy>-->
-            <!--        </snapshots>-->
             <name>Nexus Snapshots</name>
             <id>snapshots-repo</id>
             <url>https://s01.oss.sonatype.org/service/local/repositories/iokroxylicious-1019/content/</url>
@@ -33,7 +29,19 @@
         </repository>
 
     </repositories>
+-->
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.kroxylicious</groupId>
+                <artifactId>kroxylicious-bom</artifactId>
+                <type>pom</type>
+                <version>0.3.0</version>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -49,13 +57,11 @@
         <dependency>
             <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-api</artifactId>
-            <version>0.3.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-test-tools</artifactId>
-            <version>0.3.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
