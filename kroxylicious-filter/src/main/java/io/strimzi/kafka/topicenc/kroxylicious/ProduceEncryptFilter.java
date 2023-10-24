@@ -1,7 +1,8 @@
 package io.strimzi.kafka.topicenc.kroxylicious;
 
-import io.kroxylicious.proxy.filter.KrpcFilterContext;
+import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.ProduceRequestFilter;
+import io.kroxylicious.proxy.filter.RequestFilterResult;
 import io.strimzi.kafka.topicenc.EncryptionModule;
 import io.strimzi.kafka.topicenc.kms.KmsDefinition;
 import io.strimzi.kafka.topicenc.kms.test.TestKms;
@@ -15,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.CompletionStage;
 
 public class ProduceEncryptFilter implements ProduceRequestFilter {
 
@@ -23,7 +25,7 @@ public class ProduceEncryptFilter implements ProduceRequestFilter {
     private final EncryptionModule module = new EncryptionModule(new InMemoryPolicyRepository(List.of(new TopicPolicy().setTopic(TopicPolicy.ALL_TOPICS).setKms(new TestKms(new KmsDefinition())))));
 
     @Override
-    public void onProduceRequest(short apiVersion, RequestHeaderData header, ProduceRequestData request, KrpcFilterContext context) {
+    public CompletionStage<RequestFilterResult> onProduceRequest(short apiVersion, RequestHeaderData header, ProduceRequestData request, FilterContext context) {
         try {
             for (ProduceRequestData.TopicProduceData topicDatum : request.topicData()) {
                 try {
@@ -33,13 +35,13 @@ public class ProduceEncryptFilter implements ProduceRequestFilter {
                     throw new RuntimeException(e);
                 }
             }
-            context.forwardRequest(header, request);
+            return context.forwardRequest(header, request);
         } catch (Exception e) {
-            sendErrorProduceResponse(request, context);
+            return sendErrorProduceResponse(request, context);
         }
     }
 
-    private static void sendErrorProduceResponse(ProduceRequestData request, KrpcFilterContext context) {
+    private static CompletionStage<RequestFilterResult> sendErrorProduceResponse(ProduceRequestData request, FilterContext context) {
         ProduceResponseData response = new ProduceResponseData();
         for (ProduceRequestData.TopicProduceData topicDatum : request.topicData()) {
             ProduceResponseData.TopicProduceResponse topicResponse = new ProduceResponseData.TopicProduceResponse();
@@ -53,6 +55,6 @@ public class ProduceEncryptFilter implements ProduceRequestFilter {
             }
             response.responses().add(topicResponse);
         }
-        context.forwardResponse(response);
+        return context.requestFilterResultBuilder().shortCircuitResponse(response).completed();
     }
 }

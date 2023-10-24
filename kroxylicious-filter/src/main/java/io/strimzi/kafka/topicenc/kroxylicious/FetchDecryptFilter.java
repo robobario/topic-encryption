@@ -2,8 +2,10 @@ package io.strimzi.kafka.topicenc.kroxylicious;
 
 import io.kroxylicious.proxy.filter.FetchRequestFilter;
 import io.kroxylicious.proxy.filter.FetchResponseFilter;
-import io.kroxylicious.proxy.filter.KrpcFilterContext;
+import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.MetadataResponseFilter;
+import io.kroxylicious.proxy.filter.RequestFilterResult;
+import io.kroxylicious.proxy.filter.ResponseFilterResult;
 import io.strimzi.kafka.topicenc.EncryptionModule;
 import io.strimzi.kafka.topicenc.kms.KmsDefinition;
 import io.strimzi.kafka.topicenc.kms.test.TestKms;
@@ -39,27 +41,27 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
     private final EncryptionModule module = new EncryptionModule(new InMemoryPolicyRepository(List.of(new TopicPolicy().setTopic(TopicPolicy.ALL_TOPICS).setKms(new TestKms(new KmsDefinition())))));
 
     @Override
-    public void onFetchRequest(short apiVersion, RequestHeaderData header, FetchRequestData request, KrpcFilterContext context) {
+    public CompletionStage<RequestFilterResult> onFetchRequest(short apiVersion, RequestHeaderData header, FetchRequestData request, FilterContext context) {
         boolean allTopicsResolvableToName = request.topics().stream().allMatch(this::isResolvable);
         if (!allTopicsResolvableToName) {
             Set<Uuid> topicIdsToResolve = request.topics().stream().filter(Predicate.not(this::isResolvable)).map(FetchRequestData.FetchTopic::topicId).collect(toSet());
             // send a background metadata request to resolve topic ids, preparing for fetch response
             resolveAndCache(context, topicIdsToResolve);
         }
-        context.forwardRequest(header, request);
+        return context.forwardRequest(header, request);
     }
 
     @Override
-    public void onFetchResponse(short apiVersion, ResponseHeaderData header, FetchResponseData response, KrpcFilterContext context) {
+    public CompletionStage<ResponseFilterResult> onFetchResponse(short apiVersion, ResponseHeaderData header, FetchResponseData response, FilterContext context) {
         var unresolvedTopicIds = getUnresolvedTopicIds(response);
         if (unresolvedTopicIds.isEmpty()) {
-            decryptFetchResponse(header, response, context);
+            return decryptFetchResponse(header, response, context);
         } else {
             log.warn("We did not know all topic names for {} topic ids within a fetch response, requesting metadata and returning error response", unresolvedTopicIds.size());
             log.debug("We did not know all topic names for topic ids {} within a fetch response, requesting metadata and returning error response", unresolvedTopicIds);
             // we return an error rather than delaying the response to prevent out-of-order responses to the Consumer client.
             // The Filter API only supports synchronous work currently.
-            resolveTopicsAndReturnError(header, context, unresolvedTopicIds);
+            return resolveTopicsAndReturnError(header, context, unresolvedTopicIds);
         }
     }
 
@@ -73,16 +75,18 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
     /**
      * We should know the topic names by the time we get the response, because the fetch request sends a metadata request
      * for unknown topic ids before sending the fetch request. This is a safeguard in case that request fails somehow.
+     *
+     * @return
      */
-    private void resolveTopicsAndReturnError(ResponseHeaderData header, KrpcFilterContext context, Set<Uuid> topicIdsToResolve) {
+    private CompletionStage<ResponseFilterResult> resolveTopicsAndReturnError(ResponseHeaderData header, FilterContext context, Set<Uuid> topicIdsToResolve) {
         // send a background metadata request to resolve topic ids, preparing for future fetches
         resolveAndCache(context, topicIdsToResolve);
         FetchResponseData data = new FetchResponseData();
         data.setErrorCode(Errors.UNKNOWN_SERVER_ERROR.code());
-        context.forwardResponse(header, data);
+        return context.forwardResponse(header, data);
     }
 
-    private void resolveAndCache(KrpcFilterContext context, Set<Uuid> topicIdsToResolve) {
+    private void resolveAndCache(FilterContext context, Set<Uuid> topicIdsToResolve) {
         MetadataRequestData request = new MetadataRequestData();
         topicIdsToResolve.forEach(uuid -> {
             MetadataRequestData.MetadataRequestTopic e = new MetadataRequestData.MetadataRequestTopic();
@@ -91,11 +95,11 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
         });
         // if the client is sending topic ids we will assume the broker can support at least the lowest metadata apiVersion
         // supporting topicIds
-        CompletionStage<MetadataResponseData> stage = context.sendRequest(METADATA_VERSION_SUPPORTING_TOPIC_IDS, request);
+        CompletionStage<MetadataResponseData> stage = context.sendRequest(new RequestHeaderData().setRequestApiVersion(METADATA_VERSION_SUPPORTING_TOPIC_IDS), request);
         stage.thenAccept(response -> cacheTopicIdToName(response, METADATA_VERSION_SUPPORTING_TOPIC_IDS));
     }
 
-    private void decryptFetchResponse(ResponseHeaderData header, FetchResponseData response, KrpcFilterContext context) {
+    private CompletionStage<ResponseFilterResult> decryptFetchResponse(ResponseHeaderData header, FetchResponseData response, FilterContext context) {
         for (FetchResponseData.FetchableTopicResponse fetchResponse : response.responses()) {
             Uuid originalUuid = fetchResponse.topicId();
             String originalName = fetchResponse.topic();
@@ -112,7 +116,7 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
             fetchResponse.setTopic(originalName);
             fetchResponse.setTopicId(originalUuid);
         }
-        context.forwardResponse(header, response);
+        return context.forwardResponse(header, response);
     }
 
 
@@ -125,9 +129,9 @@ public class FetchDecryptFilter implements FetchRequestFilter, FetchResponseFilt
     }
 
     @Override
-    public void onMetadataResponse(short apiVersion, ResponseHeaderData header, MetadataResponseData response, KrpcFilterContext context) {
+    public CompletionStage<ResponseFilterResult> onMetadataResponse(short apiVersion, ResponseHeaderData header, MetadataResponseData response, FilterContext context) {
         cacheTopicIdToName(response, apiVersion);
-        context.forwardResponse(header, response);
+        return context.forwardResponse(header, response);
     }
 
     private void cacheTopicIdToName(MetadataResponseData response, short apiVersion) {

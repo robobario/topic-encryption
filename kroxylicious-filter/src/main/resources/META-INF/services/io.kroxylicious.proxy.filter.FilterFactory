@@ -1,0 +1,2 @@
+io.strimzi.kafka.topicenc.kroxylicious.ProduceEncryptFilterFactory
+io.strimzi.kafka.topicenc.kroxylicious.FetchDecryptFilterFactory

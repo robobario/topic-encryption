@@ -11,6 +11,30 @@
     <name>Kroxylicious Filter</name>
     <description>Integration with Kroxylicious - an proxy framework for Apache Kafka</description>
 
+
+<!--    https://s01.oss.sonatype.org/service/local/repositories/iokroxylicious-1019/content/io/kroxylicious/integrationtests/0.3.0/integrationtests-0.3.0.jar-->
+
+    <repositories>
+        <repository>
+            <releases>
+                <enabled>true</enabled>
+                <updatePolicy>always</updatePolicy>
+                <checksumPolicy>warn</checksumPolicy>
+            </releases>
+            <!--        <snapshots>-->
+            <!--            <enabled>true</enabled>-->
+            <!--            <updatePolicy>never</updatePolicy>-->
+            <!--            <checksumPolicy>fail</checksumPolicy>-->
+            <!--        </snapshots>-->
+            <name>Nexus Snapshots</name>
+            <id>snapshots-repo</id>
+            <url>https://s01.oss.sonatype.org/service/local/repositories/iokroxylicious-1019/content/</url>
+            <layout>default</layout>
+        </repository>
+
+    </repositories>
+
+
     <dependencies>
         <dependency>
             <groupId>io.strimzi</groupId>
@@ -24,25 +48,25 @@
         </dependency>
         <dependency>
             <groupId>io.kroxylicious</groupId>
-            <artifactId>kroxylicious-filter-api</artifactId>
-            <version>0.2.0</version>
+            <artifactId>kroxylicious-api</artifactId>
+            <version>0.3.0</version>
             <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.kafka</groupId>
-            <artifactId>kafka-clients</artifactId>
-            <version>3.4.0</version>
-        </dependency>
-        <dependency>
-            <groupId>io.kroxylicious.testing</groupId>
-            <artifactId>testing-junit5-extension</artifactId>
-            <version>0.2.0</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-test-tools</artifactId>
-            <version>0.2.0</version>
+            <version>0.3.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>3.6.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious.testing</groupId>
+            <artifactId>testing-junit5-extension</artifactId>
+            <version>0.6.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>

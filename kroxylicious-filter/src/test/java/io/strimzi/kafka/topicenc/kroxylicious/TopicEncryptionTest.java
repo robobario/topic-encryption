@@ -1,5 +1,6 @@
 package io.strimzi.kafka.topicenc.kroxylicious;
 
+import io.kroxylicious.proxy.config.FilterDefinitionBuilder;
 import io.kroxylicious.test.Request;
 import io.kroxylicious.test.Response;
 import io.kroxylicious.test.client.KafkaClient;
@@ -41,10 +42,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static io.kroxylicious.test.tester.KroxyliciousConfigUtils.proxy;
-import static io.kroxylicious.test.tester.KroxyliciousConfigUtils.withDefaultFilters;
 import static io.kroxylicious.test.tester.KroxyliciousTesters.kroxyliciousTester;
-import static io.strimzi.kafka.topicenc.kroxylicious.TopicEncryptionContributor.DECRYPT_FETCH;
-import static io.strimzi.kafka.topicenc.kroxylicious.TopicEncryptionContributor.ENCRYPT_PRODUCE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -62,9 +60,9 @@ class TopicEncryptionTest {
 
     @BeforeEach
     public void setup() {
-        tester = kroxyliciousTester(withDefaultFilters(proxy(cluster))
-                .addNewFilter().withType(DECRYPT_FETCH).endFilter()
-                .addNewFilter().withType(ENCRYPT_PRODUCE).endFilter()
+        tester = kroxyliciousTester(proxy(cluster)
+                .addToFilters(new FilterDefinitionBuilder(ProduceEncryptFilter.class.getSimpleName()).build())
+                .addToFilters(new FilterDefinitionBuilder(FetchDecryptFilter.class.getSimpleName()).build())
         );
     }
 
@@ -93,7 +91,7 @@ class TopicEncryptionTest {
     @Test
     public void testEncryptionRoundtripWithPreTopicIdFetchRequest(Admin admin) {
         try (Producer<String, String> producer = tester.producer();
-             KafkaClient client = tester.singleRequestClient()
+             KafkaClient client = tester.simpleTestClient();
         ) {
             admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1))).all().get(10, TimeUnit.SECONDS);
             producer.send(new ProducerRecord<>(TOPIC_NAME, UNENCRYPTED_VALUE)).get(10, TimeUnit.SECONDS);
@@ -111,7 +109,7 @@ class TopicEncryptionTest {
     @Test
     public void testEncryptionRoundtripWithPostTopicIdFetchRequest(Admin admin) {
         try (Producer<String, String> producer = tester.producer();
-             KafkaClient client = tester.singleRequestClient()
+             KafkaClient client = tester.simpleTestClient();
         ) {
             CreateTopicsResult result = admin.createTopics(List.of(new NewTopic(TOPIC_NAME, 1, (short) 1)));
             Uuid topicUuid = result.topicId(TOPIC_NAME).get(10, TimeUnit.SECONDS);
@@ -148,7 +146,7 @@ class TopicEncryptionTest {
 
     @NotNull
     private static String getOnlyRecordValueFromResponse(java.util.function.Consumer<FetchResponseData.FetchableTopicResponse> responseConsumer, Response responseCompletableFuture) {
-        FetchResponseData response = (FetchResponseData) responseCompletableFuture.message();
+        FetchResponseData response = (FetchResponseData) responseCompletableFuture.payload().message();
         FetchResponseData.FetchableTopicResponse fetchableTopicResponse = response.responses().get(0);
         responseConsumer.accept(fetchableTopicResponse);
         FetchResponseData.PartitionData partitionData = fetchableTopicResponse.partitions().get(0);
